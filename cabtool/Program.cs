@@ -17,12 +17,16 @@ namespace cabtool
         private const int DDF_HEADER_LINES = 8;
         private static StringBuilder m_txtOutput = new StringBuilder();
         private static string m_srcDir = "";
+        private static List<string> m_fileExcludes = new List<string>();
+        private static List<string> m_dirExcludes = new List<string>();
 
         static int Main(string[] args)
         {
             Dictionary<String, KeyValuePair<EArgType, bool>> argList = new Dictionary<String, KeyValuePair<EArgType, bool>>();
             argList.Add("-source", new KeyValuePair<EArgType, bool>(EArgType.VALUE, true));
             argList.Add("-target", new KeyValuePair<EArgType, bool>(EArgType.VALUE, false));
+            argList.Add("-exf", new KeyValuePair<EArgType, bool>(EArgType.VALUE, false));
+            argList.Add("-exd", new KeyValuePair<EArgType, bool>(EArgType.VALUE, false));
             argList.Add("-a", new KeyValuePair<EArgType, bool>(EArgType.FLAG, false));
             argList.Add("-x", new KeyValuePair<EArgType, bool>(EArgType.FLAG, false));
             m_parser = new CCmdParser(argList);
@@ -54,7 +58,17 @@ namespace cabtool
             string target = "";
             if (!string.IsNullOrEmpty(m_parser.Options["-target"]))
                 target = m_parser.Options["-target"];
-            if(add)
+            if(!string.IsNullOrEmpty(m_parser.Options["-exf"]))
+            {
+                string[] parts = m_parser.Options["-exf"].Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                m_fileExcludes = new List<string>(parts);
+            }
+            if (!string.IsNullOrEmpty(m_parser.Options["-exf"]))
+            {
+                string[] parts = m_parser.Options["-exf"].Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                m_dirExcludes = new List<string>(parts);
+            }
+            if (add)
             {
                 int exit = createCabinet(source, target);
                 if (exit > 0)
@@ -319,6 +333,17 @@ namespace cabtool
             {
                 foreach (string f in Directory.GetFiles(sDir))
                 {
+                    bool skip = false;
+                    foreach(string e in m_fileExcludes)
+                    {
+                        if(Path.GetFileName(f).Contains(e))
+                        {
+                            skip = true;
+                            break;
+                        }
+                    }
+                    if (skip)
+                        continue;
                     list.Add(new DdfFileRow()
                     {
                         FullName = f,
@@ -330,8 +355,17 @@ namespace cabtool
                 {
                     foreach (string d in Directory.GetDirectories(sDir))
                     {
-                        //if (d.EndsWith(".git") || d.EndsWith(".vs"))
-                        //    continue;
+                        bool skip = false;
+                        foreach (string dir in m_dirExcludes)
+                        {
+                            if (Path.GetFileName(d).Contains(dir))
+                            {
+                                skip = true;
+                                break;
+                            }
+                        }
+                        if (skip)
+                            continue;
                         list.AddRange(GetFiles(d));
                     }
                 }
