@@ -166,6 +166,11 @@ namespace cabtool
                         {
                             m_txtOutput.Append("CAB file not created. See output for details.");
                         }
+                        // not sure, but this might assist with extracting chunked cab files so I'm keeping copies
+                        if (File.Exists("setup.inf"))
+                            File.Copy("setup.inf", string.Format("{0}{1}_setup.inf", Path.GetFileName(sourceFolder), key));
+                        if (File.Exists("setup.rpt"))
+                            File.Copy("setup.rpt", string.Format("{0}{1}_setup.rpt", Path.GetFileName(sourceFolder), key));
                         File.Delete(ddfPath);
                     }
                 }
@@ -213,11 +218,30 @@ namespace cabtool
         {
             Queue<DdfFileRow> fqueue = new Queue<DdfFileRow>(files);
             Dictionary<int, List<DdfFileRow>> ddfDictionary = new Dictionary<int, List<DdfFileRow>>();
+            
+            // Going to try saving "huge" files until last.  Since a maximum of 15 large files can be chunked across 
+            // cabs I've sort of fiddled with keeping the cab list to 15 on these, but pushed the collection to the
+            // end of the dictionary.  Not sure how that'll break - if it does.
+            // Still have to find out if expand.exe can deal with this or if I'll need to use a setup program to
+            // manage reassembling chunked large files.
+            Queue<DdfFileRow> hugefiles = new Queue<DdfFileRow>();
             int maxFiles = MAX_LINES_IN_DDF - DDF_HEADER_LINES;
             int index = 0;
+            ulong totalBytes = 0;
             while(fqueue.Count > 0)
             {
                 DdfFileRow row = fqueue.Dequeue();
+                FileInfo info = new FileInfo(row.FullName);
+                if(info.Length > 1990000000)
+                {
+                    hugefiles.Enqueue(row);
+                    continue;
+                }
+                if (ddfDictionary[index].Count > maxFiles || totalBytes + (ulong)info.Length > 1990000000)
+                {
+                    ++index;
+                    totalBytes = 0;
+                }
                 if (!ddfDictionary.ContainsKey(index))
                 {
                     List<DdfFileRow> list = new List<DdfFileRow>();
@@ -226,8 +250,20 @@ namespace cabtool
                 }
                 else
                     ddfDictionary[index].Add(row);
-                if (ddfDictionary[index].Count > maxFiles)
+            }
+            if(hugefiles.Count > 0)
+            {
+                do
+                {
                     ++index;
+                    List<DdfFileRow> list = new List<DdfFileRow>();
+                    while (list.Count <= 15 && hugefiles.Count > 0)
+                    {
+                        DdfFileRow row = hugefiles.Dequeue();
+                        list.Add(row);
+                    }
+                    ddfDictionary.Add(index, list);
+                } while (hugefiles.Count > 0);
             }
             return ddfDictionary;
         }
@@ -262,7 +298,7 @@ namespace cabtool
 
                     string cmd = String.Format("/r {0} /f:* {1}", cabinetPath, targetPath);
 
-                    // Run "makecab.exe"
+                    // Run "expand.exe"
 
                     Process process = new Process();
 
